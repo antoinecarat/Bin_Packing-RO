@@ -23,6 +23,12 @@ typedef struct {
 	objets *tab; // Tableau des objets (taille + nombre dans une même taille) 
 } donnees;
 	
+typedef struct {
+	int t; //Taille du motif (somme des taille des objets dans le motif)
+	objets *tab; 
+}motif;
+
+motifs *motifTab;
 
 /* lecture des donnees */
 
@@ -86,11 +92,40 @@ double crono_ms()
     (stop_utime.tv_usec - start_utime.tv_usec) / 1000 ;
 }
 
-/* Fonctions à ajouter
-	.
-	.
-	.
- */
+//trier des objets par ordre decroissant - tri fusion
+void triObjets(objets *tab, int d, int f){
+
+}
+
+//ajouter un objet o dans le motif i
+void ajoutObjet(objets o, int i){
+//mettre un exemplaire de l'objet et maj la taille du motif
+//si il y est dejà nb+1 sinon new avec nb=1
+}
+
+int tailleMotif(int i){
+	return motifTab[i].t;
+}
+
+//Fonction qui calcule les différents motifs pour les donnees p
+int motifs(donnees p, int objetCourant, int motifCourant){
+	int nb = 0;
+	if (objetCourant < p.nb) {
+		for (int i=objetCourant; i< p.nb; ++i){
+			if ((tailleMotif(motifCourant) + p.tab[objetCourant].t) < p.T) {	//Si on a la place de stocker l'objet courant
+				ajoutObjet(p.tab[objetCourant],motifCourant);	//On l'ajoute au motif et on essaie d'en mettre un autre du même type (on boucle dans le for).
+
+			} else if ((tailleMotif(motifCourant) + p.tab[objetCourant+1].t) < p.T)){ //Sinon on a la place de de mettre l'objet suivant.
+				ajoutObjet(p.tab[objetCourant+1],motifCourant);	//On l'ajoute au motif et on essaie d'en mettre un autre du même type.
+				nb = motifs(p,objetCourant+1,motifCourant);
+			} else {
+				nb = 1 + motifs(p,objetCourant+1,motifCourant+1);
+			}
+		}
+		nb = motifs(p,objetCourant,motifCourant+1);
+	}
+	return nb;
+}
  
 int main(int argc, char *argv[])
 {	
@@ -108,16 +143,19 @@ int main(int argc, char *argv[])
 	/* Chargement des données à partir d'un fichier */
 	
 	lecture_data(argv[1],&p);
+
 	
 	/* Lancement du chronomètre! */
 	
 	crono_start(); 
 	
-	/* A compléter
-	 .
-	 .
-	 .
-	 */
+	triObjets(p.tab, 0, p.nb-1);
+	motif(p, 0, 0);
+
+	//resoudre le probleme
+
+
+
 	
 	
 	/* Problème résolu, arrêt du chrono et affichage des résultats */
