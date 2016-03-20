@@ -1,10 +1,9 @@
-/* NOM1 Prénom1 
-   NOM2 Prénom2	*/
+//CARAT Antoine
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <glpk.h> 
+//#include <glpk.h> 
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -28,7 +27,7 @@ typedef struct {
 	objets *tab; 
 }motif;
 
-motifs *motifTab;
+motif motifTab;
 
 /* lecture des donnees */
 
@@ -92,15 +91,65 @@ double crono_ms()
     (stop_utime.tv_usec - start_utime.tv_usec) / 1000 ;
 }
 
-//trier des objets par ordre decroissant - tri fusion
-void triObjets(objets *tab, int d, int f){
 
+void fusion(objets* tab, int d1, int f1, int d2, int f2){
+	
+	objets *tmp = (objets *) malloc((f2 * sizeof(objets))+1);
+	int cmp1 = d1;
+	int cmp2 = d2;
+
+	for(int i=d1; i<=f2; ++i){
+		
+		if (cmp1>f1 && cmp2>f2){
+			break;
+		} else if (cmp1>f1) {
+	        tmp[i]=tab[cmp2];
+            ++cmp2;
+    	} else if (cmp2>f2) {
+            tmp[i]=tab[cmp1];
+            ++cmp1;
+        } else if (tab[cmp1].t > tab[cmp2].t){
+			tmp[i].t = tab[cmp1].t;
+			tmp[i].nb = tab[cmp1].nb;
+			++cmp1;
+		} else {
+			tmp[i].t = tab[cmp2].t;
+			tmp[i].nb = tab[cmp2].nb;
+			++cmp2;
+		}
+	}
+	
+	for(int i=d1; i<=f2; ++i){
+		tab[i].t = tmp[i].t;
+		tab[i].nb = tmp[i].nb;
+	}
+	
+    free(tmp);
 }
 
-//ajouter un objet o dans le motif i
-void ajoutObjet(objets o, int i){
-//mettre un exemplaire de l'objet et maj la taille du motif
-//si il y est dejà nb+1 sinon new avec nb=1
+void triFusion(objets* tab, int d, int f){
+	int pivot = ((f-d)/2)+d;
+	
+	if (f-d>2) {
+		triFusion(tab,d,pivot);
+		triFusion(tab,pivot+1,f);
+	} else {
+		fusion(tab,d,pivot,pivot+1,f);
+	}
+}
+
+//trier des objets par ordre decroissant ; last est le dernier indice de tab
+void triObjets(objets *tab, int last){
+	int pivot = (last/2);
+	
+	triFusion(tab,0,pivot);
+	triFusion(tab,pivot+1,last);
+	fusion(tab,0,pivot,pivot+1,last);
+}
+
+/*//ajouter un objet o dans le motif i
+void ajoutObjet(int o, int i){
+	
 }
 
 int tailleMotif(int i){
@@ -115,7 +164,7 @@ int motifs(donnees p, int objetCourant, int motifCourant){
 			if ((tailleMotif(motifCourant) + p.tab[objetCourant].t) < p.T) {	//Si on a la place de stocker l'objet courant
 				ajoutObjet(p.tab[objetCourant],motifCourant);	//On l'ajoute au motif et on essaie d'en mettre un autre du même type (on boucle dans le for).
 
-			} else if ((tailleMotif(motifCourant) + p.tab[objetCourant+1].t) < p.T)){ //Sinon on a la place de de mettre l'objet suivant.
+			} else if ((tailleMotif(motifCourant) + p.tab[objetCourant+1].t) < p.T){ //Sinon on a la place de de mettre l'objet suivant.
 				ajoutObjet(p.tab[objetCourant+1],motifCourant);	//On l'ajoute au motif et on essaie d'en mettre un autre du même type.
 				nb = motifs(p,objetCourant+1,motifCourant);
 			} else {
@@ -125,14 +174,14 @@ int motifs(donnees p, int objetCourant, int motifCourant){
 		nb = motifs(p,objetCourant,motifCourant+1);
 	}
 	return nb;
-}
+}*/
  
 int main(int argc, char *argv[])
 {	
 	/* Données du problème */
 
 	donnees p; 
-		
+	
 	/* autres déclarations 
 		.
 		.
@@ -142,19 +191,42 @@ int main(int argc, char *argv[])
 	
 	/* Chargement des données à partir d'un fichier */
 	
-	lecture_data(argv[1],&p);
+	//lecture_data(argv[1],&p);
+	
+	//motifTab = (motif *) malloc (1*p.nb * sizeof(motif));
+	
+	
+	/* Test du tri par fusion.
+	p.T = 10;
+	p.nb = 5;
+	p.tab = (objets *) malloc (p.nb * sizeof(objets));
+	
+	int valT[5] = {4,3,1,24,2};
+	int valNb[5] = {2,4,1,5,3};
+	
+	for(int i = 0;i < p.nb; ++i) // Pour chaque format d'objet...
+	{
+		p.tab[i].t = valT[i];
+		p.tab[i].nb = valNb[i];
+	}
 
+	printf("AVANT : ");
+	for (int i=0; i< p.nb; ++i){
+		printf("%d ; ",p.tab[i].t);	
+	}
+	printf("\n");
+	triObjets(p.tab, p.nb-1);
+	printf("APRES : ");
+	for (int i=0; i< p.nb; ++i){
+		printf("%d ; ",p.tab[i].t);	
+	}*/
 	
 	/* Lancement du chronomètre! */
 	
 	crono_start(); 
 	
-	triObjets(p.tab, 0, p.nb-1);
-	motif(p, 0, 0);
-
+	triObjets(p.tab, p.nb-1);
 	//resoudre le probleme
-
-
 
 	
 	
