@@ -1,30 +1,40 @@
-//CARAT Antoine
+/* Utilisation de GLPK en mode bibliothèque */
+/* Il s'agit de l'exercice 2.2 des feuilles de TD, qui a servi à illustrer l'utilisation d'une matrice creuse avec GNUMathProg */
+/* Ici, les données sont séparées de la modélisation, et sont lues dans un fichier */
+/* Comme nous ne connaissons pas a priori la taille du problème, des allocations dynamiques sont nécessaires */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-//#include <glpk.h> 
+//#include <glpk.h> /* Nous allons utiliser la bibliothèque de fonctions de GLPK */
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 
 
 /* Structure contenant les données du problème */
-
+/**
+ * @struct Structure objets : 
+ *          int t : taille d'une piece
+ *          int nb : nombre de piece de cette taille
+ */
 typedef struct {
-	int t; // Taille de l'objet
-	int nb; // Nombre d'objets de la même taille 
+	int t; 
+	int nb; 
 } objets;
 
-typedef struct {
-	int T; // Taille du bin 
-	int nb; // Nombre de tailles différentes pour les objets
-	objets *tab; // Tableau des objets (taille + nombre dans une même taille) 
-} donnees;
 
+/**
+ * @struct Structure donnees : contenant les donnees du probleme
+ *          int T : taille du bin
+ *          int nb : nombre de tailles differentes d'objets
+ *          objets *tab : tableau d'objet (voir struct objets)
+ */ 
 typedef struct {
-	objets *tab; 
-}motif;
+	int T;  
+	int nb; 
+	objets *tab;  
+} donnees;
 
 typedef struct {
 	int nbvar; // Nombre de variables [nbMotif]
@@ -35,27 +45,23 @@ typedef struct {
 	int *droite; // Tableau des valeurs des membres de droites des contraintes [di]
 } probleme;
 
-motif * motifTab;
-int nbM;
+struct timeval start_utime, stop_utime;
 
-/* lecture des donnees */
 
-void lecture_data(char *file, donnees *p)
-{
+void lecture_data(char *file, donnees *p){
 	
 	FILE *fin; // Pointeur sur un fichier
 	int i;	
 	int val;
 	
 	fin = fopen(file,"r"); // Ouverture du fichier en lecture
-	
 	/* Première ligne du fichier, on lit la taille du bin, et le nombre de tailles différentes pour les objets à ranger */
 	
 	fscanf(fin,"%d",&val);
 	p->T = val;
 	fscanf(fin,"%d",&val);
 	p->nb = val;
-	
+
 	/* On peut maintenant faire l'allocation dynamique concernant le nombre de tailles différentes d'objets */
 	
 	p->tab = (objets *) malloc (p->nb * sizeof(objets));
@@ -74,6 +80,121 @@ void lecture_data(char *file, donnees *p)
 	fclose(fin); // Fermeture du fichier
 }
 
+void crono_start()
+{
+	struct rusage rusage;
+	
+	getrusage(RUSAGE_SELF, &rusage);
+	start_utime = rusage.ru_utime;
+}
+
+void crono_stop()
+{
+	struct rusage rusage;
+	
+	getrusage(RUSAGE_SELF, &rusage);
+	stop_utime = rusage.ru_utime;
+}
+
+double crono_ms()
+{
+	return (stop_utime.tv_sec - start_utime.tv_sec) * 1000 +
+    (stop_utime.tv_usec - start_utime.tv_usec) / 1000 ;
+}
+
+
+
+/* On va charger les donnes du probleme dans un probleme pour glpk */
+/**
+ * Procedure : tri_rapide
+ * @param tableau : tableau d'objet present dans la structure donnes 
+ * @param taille : taille du tableau d'objet
+ */
+void tri_rapide (objets *tableau, int taille) 
+{
+    //privot : element qui est a sa place difinitive
+    // tout deux inferieur a sa gauche tout ceux super a sa droite 
+    int mur, courant, pivot, tmp;
+    if (taille < 2) {
+        return; 
+    } else {
+        // On prend comme pivot l element le plus a droite
+        pivot = tableau[taille - 1].t;  
+        
+        mur  = courant = 0;
+        while (courant<taille) {    
+            if (tableau[courant].t >= pivot) {
+                if (mur != courant) {
+                    //echange les valeur de deux cases
+                    tmp=tableau[courant].t;
+                    tableau[courant].t =tableau[mur].t;
+                    tableau[mur].t=tmp;              
+                }
+                mur ++;
+            }
+            courant ++;
+        }
+        //On refait l'algo sur le sous tableau de gauche
+        tri_rapide(tableau, mur - 1);
+        //On refait l'algo sur le sous tableu de droite 
+        tri_rapide(tableau + mur - 1, taille - mur + 1);
+    }
+}    
+
+/**
+ * Proceudre : ajouterMotif - Ajoute une piece au tableau de motif 
+ *                              (qui est un tableau d'objet)
+ * @param tableauMotif : tableau de motif (tableau de tableau d'objets)
+ * @param nbMotif : numero de motif dans le quel on doit rajouter la piece 
+ * @param i : quel pièce a ete rajoute dans le motif nbMotif
+ */
+void ajouterMotif(objets** tableauMotif, int nbMotif, int i) {
+    tableauMotif[nbMotif][i].nb  = tableauMotif[nbMotif][i].nb + 1;
+}
+/**
+ * Procedure : motifs - Enumere les motifs 
+ * @param p : donnees
+ * @param tailleT : taille prise dans le bin
+ * @param indO : indice
+ * @param nbM : nombre de motif mit par reference pour recuperer a chaque tour
+ *              combien de motif on a deja remplie
+ * @param tableauMotif : tableau de tableau d'objet a remplie avec les motifs
+ */ 
+ 
+int motifs (donnees p, int tailleT, int indO, int nbM, objets** tableauMotif, int* tableau) {
+    
+    //tableau temporaire de coefficient d'objet
+    int *tmp = (int* )malloc(p.nb * sizeof(int));
+    // Parcours toutes les pieces 
+    for (int i=indO ; i<(p.nb) ; i++) {
+      //copie tableau dans tmp
+      for (int k=0; k<p.nb;++k){
+          tmp[k] = tableau[k];
+      }
+        //si il reste de la place dans le bin
+        if ((tailleT + (p.tab[i]).t) <= p.T) {
+            tmp[i] = tmp[i] +1;       //Ajoute la piece dans le tmp
+            nbM = motifs(p, (tailleT + (p.tab[i]).t), i, nbM, tableauMotif, tmp); 
+        //si l'il reste encore des pieces a tester
+        } else if (indO+1 != p.nb) {
+            nbM = motifs(p, tailleT, indO+1, nbM, tableauMotif, tableau);
+            return nbM;
+        } else {
+        	//Ajout le motif terminé dans le tableau de motif
+        	for (int j=0; j<p.nb;++j){
+                if(tableau[j]>0){
+                    for (int a=0; a<tableau[j]; ++a){
+                        ajouterMotif(tableauMotif, nbM, j);
+                    }
+                }
+            }
+        	nbM = nbM +1;
+        	return nbM;
+        }
+    }
+    free(tmp);
+    return nbM;
+}
 
 void load_data(donnees *d, probleme *p, int nbMotif)
 {
@@ -123,214 +244,49 @@ void load_data(donnees *d, probleme *p, int nbMotif)
 }
 
 
-/* Quelques fonctions utiles pour la mesure du temps CPU */
-
-struct timeval start_utime, stop_utime;
-
-void crono_start()
-{
-	struct rusage rusage;
-	
-	getrusage(RUSAGE_SELF, &rusage);
-	start_utime = rusage.ru_utime;
-}
-
-void crono_stop()
-{
-	struct rusage rusage;
-	
-	getrusage(RUSAGE_SELF, &rusage);
-	stop_utime = rusage.ru_utime;
-}
-
-double crono_ms()
-{
-	return (stop_utime.tv_sec - start_utime.tv_sec) * 1000 +
-    (stop_utime.tv_usec - start_utime.tv_usec) / 1000 ;
-}
-
-
-void fusion(objets* tab, int d1, int f1, int d2, int f2){
-	
-	objets *tmp = (objets *) malloc((f2 * sizeof(objets)));
-	int cmp1 = d1;
-	int cmp2 = d2;
-
-	for(int i=d1; i<=f2; ++i){
-		
-		if (cmp1>f1 && cmp2>f2){
-			break;
-		} else if (cmp1>f1) {
-	        tmp[i].t=tab[cmp2].t;
-	        tmp[i].nb=tab[cmp2].nb;
-            ++cmp2;
-    	} else if (cmp2>f2) {
-            tmp[i].t=tab[cmp1].t;
-	        tmp[i].nb=tab[cmp1].nb;
-            ++cmp1;
-        } else if (tab[cmp1].t > tab[cmp2].t){
-			tmp[i].t = tab[cmp1].t;
-			tmp[i].nb = tab[cmp1].nb;
-			++cmp1;
-		} else {
-			tmp[i].t = tab[cmp2].t;
-			tmp[i].nb = tab[cmp2].nb;
-			++cmp2;
-		}
-	}
-	
-	for(int i=d1; i<=(f2); ++i){
-		tab[i].t = tmp[i].t;
-		tab[i].nb = tmp[i].nb;
-	}
-	
-	printf("Fusion de %d a %d\n",d1,f2);
-	for(int i=d1; i<=f2; ++i){
-		printf("%d | ",tab[i].t);
-	}
-	printf("\n");
-	
-   // free(tmp);
-}
-
-void triFusion(objets* tab, int d, int f){
-	int pivot = ((f-d)/2)+d;
-	
-	if (f-d>2) {
-		triFusion(tab,d,pivot);
-		triFusion(tab,pivot+1,f);
-	} else {
-		fusion(tab,d,pivot,pivot+1,f);
-	}
-}
-
-//trier des objets par ordre decroissant ; last est le dernier indice de tab
-void triObjets(objets *tab, int last){
-	int pivot = (last/2)+1;
-	
-	triFusion(tab,0,pivot);
-	triFusion(tab,pivot+1,last);
-	fusion(tab,0,pivot,pivot+1,last);
-}
-
-//ajouter un objet o dans le motif i
-void ajoutObjet(int o, int i){
-	motifTab[i].tab[o].nb = motifTab[i].tab[o].nb+1;
-}
-
-//Fonction qui calcule les différents motifs pour les donnees p
-void motifs (donnees p, int tailleT, int d, int* tableau) {
-    
-    //tableau temporaire de coefficient d'objet
-    int *tmp = (int* )malloc(p.nb * sizeof(int));
-    // Parcours toutes les pieces 
-    for (int i=d ; i<(p.nb) ; i++) {
-      //copie tableau dans tmp
-      for (int k=0; k<p.nb;++k){
-          tmp[k] = tableau[k];
-      }
-        //si il reste de la place dans le bin
-        if ((tailleT + (p.tab[i]).t) <= p.T) {
-            tmp[i] = tmp[i] +1;       //Ajoute la piece dans le tmp
-            motifs(p, (tailleT + (p.tab[i]).t), i, tmp); 
-        //si l'il reste encore des pieces a tester
-        } else if (d+1 != p.nb) {
-            motifs(p, tailleT, d+1, tableau);
-            break;
-        } else {
-        	//Ajout le motif terminé dans le tableau de motif
-        	for (int j=0; j<p.nb;++j){
-                if(tableau[j]>0){
-                    for (int a=0; a<tableau[j]; ++a){
-                        ajoutObjet(j, nbM);
-                    }
-                }
-            }
-        	nbM = nbM +1;
-        	break;
-        }
-    }
-//    free(tmp);
-}
- 
 int main(int argc, char *argv[])
 {	
 	/* Données du problème */
+	
+	donnees d1;
+	
+	
+	//char * fichier = "A8.dat";
+	
 
-	donnees p; 
-	
-	/* autres déclarations 
-		.
-		.
-		.
-	 */ 
-	
-	
-	/* Chargement des données à partir d'un fichier */
-	
-	//lecture_data(argv[1],&p);
-	
-	p.T = 30;
-	p.nb = 8;
-	p.tab = (objets *) malloc (p.nb * sizeof(objets));//
-	
-	int valT[8] = {13,12,18,8,11,20,10,9};
-	int valNb[8] = {11,5,10,8,11,5,12,10};
-	
-	for(int i = 0;i < p.nb; ++i) // Pour chaque format d'objet...
-	{
-		p.tab[i].t = valT[i];
-		p.tab[i].nb = valNb[i];
-	}
-	printf("\n");
-	
-	
-	/* Init constantes */
-	
-	motifTab = (motif *) malloc (37*p.nb * sizeof(motif));
-	nbM = 0;
-	
-	for(int i=0; i<37;++i){
-		motifTab[i].tab = (objets *) malloc (p.nb * sizeof(objets));
-	}
-	
-	
-	triObjets(p.tab, p.nb-1);
-	for(int i=0; i<37;++i){
-		for(int j=0; j<p.nb; ++j){
-			printf("%d ,",p.tab[j].t);
-			motifTab[i].tab[j].t = p.tab[j].t;
-			motifTab[i].tab[j].nb = 0;
-		}
-		printf("\n");
-	}
-	
-	
+	lecture_data(argv[1], &d1);
+		
 	/* Lancement du chronomètre! */
 	
 	crono_start(); 
 	
-	int *tabT = (int *) malloc (p.nb * sizeof(int));
-	for(int i=0; i<p.nb;++i){
-		tabT[i] =0;
-	}
-	//resoudre le probleme
-	int n=0;
-	motifs(p,0,0,&n,tabT);
+    tri_rapide(d1.tab, d1.nb); 
+
+    /**TODO  REALLOC */
+    objets ** tableauMotif = (objets **) malloc (36 * sizeof(objets*));
+	for (int i = 0; i < 36; i++)
+    {
+        tableauMotif[i] = (objets *) malloc(sizeof(objets) * d1.nb);
+    }
+    for (int i=0; i<36;i++) {
+        for(int j=0; j<d1.nb; j++){
+            tableauMotif[i][j].nb = 0;
+        }
+    }
+
+	int * tableau = (int *)malloc(d1.nb * sizeof(int));
+    for (int i=0; i<d1.nb;++i){
+        tableau[i] = 0;
+    }
+    
+
+    //calcul le nombre de motif pour le load_date et remplie tableau de motif 
+	int nbMotif = motifs(d1,0,0,0,tableauMotif, tableau);//appel ta fonction motifs;
+	probleme p; 
 	
-	probleme p1;
-	
-	load_data(&p,&p1, &n);
-	
-	for(int i=0; i<37;++i){
-		printf("Motif %d :\n",i);
-		for(int j=0; j<p.nb; ++j){
-			printf("%d ,",motifTab[i].tab[j].nb);
-		}
-		printf("\n---\n\n");
-	}
-	
-	// structures de données propres à GLPK
+	load_data(&d1,&p, nbMotif);
+
+	// /*/*/* structures de données propres à GLPK */
 	
 	// glp_prob *prob; // déclaration d'un pointeur sur le problème
 	// int *ia;
@@ -338,7 +294,7 @@ int main(int argc, char *argv[])
 	// double *ar; // déclaration des 3 tableaux servant à définir la matrice "creuse" des contraintes
 	
 	// /* Les déclarations suivantes sont optionnelles, leur but est de donner des noms aux variables et aux contraintes.
-	//     Cela permet de lire plus facilement le modèle saisi si on en demande un affichage à GLPK, ce qui est souvent utile pour détecter une erreur! */
+	//    Cela permet de lire plus facilement le modèle saisi si on en demande un affichage à GLPK, ce qui est souvent utile pour détecter une erreur! */
 	
 	// char **nomcontr;
 	// char **numero;	
@@ -469,8 +425,8 @@ int main(int argc, char *argv[])
 	// free(ia);
 	// free(ja);
 	// free(ar);
-	// free(x);
-	
+	// free(x);*/*/
+
 	/* Problème résolu, arrêt du chrono et affichage des résultats */
 
 	double temps;
@@ -481,9 +437,8 @@ int main(int argc, char *argv[])
 	
 	/* Libération mémoire */
 	
-	free(p.tab);
+	free(d1.tab);
 											
-	/* J'adore qu'un plan se déroule sans accroc! */
-	
+	/* J'adore qu'un plan se déroule sans accroc! */	
 	return 0;
 }
