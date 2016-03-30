@@ -44,10 +44,11 @@ void afficherArbre(arbre *a){
     }
 }
 
-
 int main(int argc, char **argv)
 {
-    /* Déclarons 3 listes chaînées de façons différentes mais équivalentes */
+   /* Déclarons 3 listes chaînées de façons différentes mais équivalentes */
+   
+   
    arbre *a = creerArbre(1);
    arbre *b = creerArbre(8);
    ajouterEnfant(a,2);
