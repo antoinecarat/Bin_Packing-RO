@@ -1,70 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+//#include <glpk.h>
+#include <time.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+#include "pile.h"
 
-
-/* ---------- Structure Pile ---------- */
-
-typedef struct maillon maillon;
-
-struct maillon{
-    maillon *suiv;
-    int elt;
-};
-
-typedef struct{
-    maillon *sommet;
-    int taille;
-    int poids;
-} pile;
-
-maillon* creerMaillon(int e){
-    maillon* m = malloc(sizeof(maillon));
-    m->suiv = NULL;
-    m->elt = e;
-    
-    return m;
-}
-
-pile* creerPile(){
-    pile *p = malloc(sizeof(pile));
-    p->sommet=NULL;
-    p->taille=0;
-    p->poids=0;
-    return p;
-}
-
-void empiler(pile *p, int e){
-    maillon *m = creerMaillon(e);
-    maillon* tmp = p->sommet;
-    p->sommet = m;
-    p->sommet->suiv = tmp;
-    p->taille++;
-    p->poids += m->elt;
-}
-
-void depiler(pile *p){
-    if (p->taille!=0){
-        p->poids -= p->sommet->elt;
-        p->sommet = p->sommet->suiv;
-        p->taille--;
-    }
-}
-
-void afficherPile(pile *p){
-    if (p->taille==0){
-        printf("Pile Vide.\n");
-    } else {
-        maillon *ptr = p->sommet;
-        while(ptr != NULL){
-            printf("%d\n",ptr->elt);
-            ptr = ptr->suiv;
-        }
-        printf("--\n");
-    }
-}
- /* --------------------------------- */
-
+struct timeval start_utime, stop_utime;
 
 typedef struct {
 	int t; // Taille de l'objet
@@ -77,12 +20,21 @@ typedef struct {
 	objets *tab; // Tableau des objets (taille + nombre dans une même taille) 
 } donnees;
 
+typedef struct {
+	int nbvar; 
+	int nbcontr; 
+	int *coeff;  
+	int **contr; 
+	int *sizeContr; 
+	int *droite;
+} probleme;
+
 typedef struct motifs motifs;
 
 struct motifs {
     motifs *suiv;
     motifs *prec;
-    objets *tab;//de taille donnes->nb
+    objets *tab;
     int taille;
 };
 
@@ -93,39 +45,37 @@ typedef struct{
     int nbMotifs;
 } listeMotifs;
 
+listeMotifs *lMotifs;
 
-listeMotifs lMotifs;
-
-listeMotifs* creerListeMotifs(){
-    listeMotifs *l = malloc(sizeof(listeMotifs));
-    l->tete=NULL;
-    l->queue=NULL;
-    l->nbMotifs=0;
+/**
+ * Prodecure crono_start : Demarre le chrono
+*/
+void crono_start()
+{
+	struct rusage rusage;
+	
+	getrusage(RUSAGE_SELF, &rusage);
+	start_utime = rusage.ru_utime;
 }
 
-void afficherMotifs(motifs *m, int nb){
-    if (m->taille==0){
-        printf("Motif Vide._n");
-    } else {
-        printf("============\nTAILLE : %d\n",m->taille);
-        for (int i=0; i<nb; ++i){
-            printf("%d :: %d\n",m->tab[i].t,m->tab[i].nb);
-        }
-        printf("============\n");
-    }
+/**
+ * Prodecure crono_stop : Arrete le chrono
+*/
+void crono_stop()
+{
+	struct rusage rusage;
+	
+	getrusage(RUSAGE_SELF, &rusage);
+	stop_utime = rusage.ru_utime;
 }
 
-void afficherListeMotifs(listeMotifs *l, int nb){
-    if (l->nbMotifs==0){
-        printf("ListeMotifs Vide.\n");
-    } else {
-        motifs *ptr = l->tete;
-        while(ptr != NULL){
-            afficherMotifs(ptr, nb);
-            ptr = ptr->suiv;
-        }
-        printf("\n");
-    }
+/**
+ * Prodecure crono_ms
+*/
+double crono_ms()
+{
+	return (stop_utime.tv_sec - start_utime.tv_sec) * 1000 +
+    (stop_utime.tv_usec - start_utime.tv_usec) / 1000 ;
 }
 
 void lecture_data(char *file, donnees *p)
@@ -150,7 +100,7 @@ void lecture_data(char *file, donnees *p)
 	
 	/* On lit ensuite les infos sur les (taille d'objets + nombres) */
 	
-	for(i = 0;i < p->nb;i++) // Pour chaque format d'objet...
+	for(i = 0;i < p->nb;++i) // Pour chaque format d'objet...
 	{
 		// ... on lit les informations correspondantes
 		fscanf(fin,"%d",&val);
@@ -162,20 +112,33 @@ void lecture_data(char *file, donnees *p)
 	fclose(fin); // Fermeture du fichier
 }
 
-motifs* creerMotif(pile *p, donnees *d){
+
+void triFusion(objets *tab, int nb){
+       
+}
+
+
+listeMotifs* creerListeMotifs(){
+    listeMotifs *l = malloc(sizeof(listeMotifs));
+    l->tete=NULL;
+    l->queue=NULL;
+    l->nbMotifs=0;
+    
+    return l;
+}
+
+motifs* convertirMotif(pile *p, donnees *d){
     motifs *m = malloc(sizeof(motifs));
     m->prec = NULL;
     m->suiv=NULL;
     m->tab = malloc (d->nb*sizeof(objets));
     m->taille = 0;
-    
-    //Initialisation
+
     for (int i=0; i<d->nb; ++i){
         m->tab[i].t=d->tab[i].t;
         m->tab[i].nb=0;
     }
-    
-    //On converti le contenu de la pile en motif
+
     maillon *ptr = p->sommet;
     for(int j=d->nb; j>0 ; --j){
         while (ptr->elt == d->tab[j-1].t){
@@ -193,49 +156,251 @@ motifs* creerMotif(pile *p, donnees *d){
     return m;
 }
 
-void ajouterMotif(motifs *m){
-    if(lMotifs.nbMotifs>0){
-        lMotifs.queue->suiv = m;
-        m->prec = lMotifs.queue;
-        lMotifs.queue = m;
-    } else {
-        lMotifs.queue = m;
-        lMotifs.tete = lMotifs.queue;
+motifs creerMotif(donnees *d){
+    motifs m;
+    m.prec = NULL;
+    m.suiv=NULL;
+    m.tab = malloc (d->nb*sizeof(objets));
+    m.taille = 0;
+
+    for (int i=0; i<d->nb; ++i){
+        m.tab[i].t=d->tab[i].t;
+        m.tab[i].nb=0;
     }
-    lMotifs.nbMotifs++;//On incrémente nbMotifs
+
+    return m;
 }
 
-void enumeration_Motifs(donnees *d, pile *pile, int start){
+void ajouterMotif(motifs *m, listeMotifs *l){
+    if(l->nbMotifs>0){
+        l->queue->suiv = m;
+        m->prec = l->queue;
+        l->queue = m;
+    } else {
+        l->queue = m;
+        l->tete = l->queue;
+    }
+    l->nbMotifs++;
+}
+
+void afficherDonnees(donnees *d){
+    printf("Taille des bins : %d\n",d->T);
+    printf("%d Pieces :\n",d->nb);
+    for(int i=0; i<d->nb; ++i){
+        printf("%d :: %d\n",d->tab[i].t,d->tab[i].nb);
+    }
+    printf("\n");
+}
+
+void afficherMotifs(motifs *m, int nb){
+    if (m->taille==0){
+        printf("Motif Vide._n");
+    } else {
+        printf("============\nTAILLE : %d\n",m->taille);
+        for (int i=0; i<nb; ++i){
+            printf("%d :: %d\n",m->tab[i].t,m->tab[i].nb);
+        }
+        printf("============\n");
+    }
+}
+
+void afficherListeMotifs(listeMotifs *l, int nb){
+    if (l->nbMotifs==0){
+        printf("ListeMotifs Vide.\n");
+    } else {
+        printf("%d Motifs :\n",l->nbMotifs);
+        motifs *ptr = l->tete;
+        while(ptr != NULL){
+            afficherMotifs(ptr, nb);
+            ptr = ptr->suiv;
+        }
+        printf("\n");
+    }
+}
+
+void enumerationMotifs(donnees *d, pile *pile, int start){
     for (int i=start; i<d->nb; ++i){
         if (d->T >= pile->poids + d->tab[i].t){
             empiler(pile, d->tab[i].t);
-            enumeration_Motifs(d, pile, i);
+            enumerationMotifs(d, pile, i);
         }
     }
     if(pile->poids + d->tab[d->nb-1].t > d->T){
-        motifs *m = creerMotif(pile, d);
-        ajouterMotif(m);
+        motifs *m = convertirMotif(pile, d);
+        ajouterMotif(m,lMotifs);
     }
     depiler(pile);
 }
 
+void chargerProbleme(donnees *d, probleme *p){
+	p->nbvar = lMotifs->nbMotifs;
+	p->nbcontr = d->nb;
+		
+	p->coeff = (int *) malloc (p->nbvar * sizeof(int));
+	p->droite = (int *) malloc (p->nbcontr * sizeof(int));
+	p->sizeContr = (int *) malloc (p->nbcontr * sizeof(int));
+	p->contr = (int **) malloc (p->nbcontr * sizeof(int *));
+	
+	for(int i = 0;i < p->nbvar;++i){
+			p->coeff[i] = 1;
+	}
+
+	for(int i = 0; i < p->nbcontr; ++i){
+		p->sizeContr[i] = p->nbvar;
+		p->contr[i] = (int *) malloc (p->sizeContr[i] * sizeof(int));
+		
+		for(int j = 0; j < p->sizeContr[i];++j){
+			p->contr[i][j] = j+1;
+		}
+		p->droite[i] = d->tab[i].nb; 
+	}
+}
+
+/*void resoudreProbleme(probleme *p){
+	glp_prob *prob;
+	int *ia;
+	int *ja;
+	double *ar;
+	
+	char **nomcontr;
+	char **numero;	
+	char **nomvar; 
+
+    int z; 		 
+	double *x; 
+	
+	int nbcreux;
+	int pos;
+	
+	//Transfert de ces données dans les structures utilisées par la bibliothèque GLPK
+
+	prob = glp_create_prob(); // allocation mémoire pour le problème  
+	glp_set_prob_name(prob, "Simple Bin-Packing"); //affectation d'un nom (on pourrait mettre NULL) 
+	glp_set_obj_dir(prob, GLP_MIN); // Il s'agit d'un problème de minimisation, on utiliserait la constante GLP_MAX dans le cas contraire
+	
+	// Déclaration du nombre de contraintes (nombre de lignes de la matrice des contraintes) : p->nbcontr
+	glp_add_rows(prob, p->nbcontr); 
+	nomcontr = (char **) malloc (p->nbcontr * sizeof(char *));
+	numero = (char **) malloc (p->nbcontr * sizeof(char *)); 
+
+	for(int i=1;i<=p->nbcontr;++i){
+		nomcontr[i - 1] = (char *) malloc (8 * sizeof(char)); 
+		numero[i - 1] = (char *) malloc (3  * sizeof(char));
+		strcpy(nomcontr[i-1], "piece");
+		sprintf(numero[i-1], "%d", i);
+		strcat(nomcontr[i-1], numero[i-1]); 	
+		glp_set_row_name(prob, i, nomcontr[i-1]);
+		
+		glp_set_row_bnds(prob, i, GLP_LO, p->droite[i-1], 0.0); 
+	}	
+
+	glp_add_cols(prob, p->nbvar); 
+	nomvar = (char **) malloc (p->nbvar * sizeof(char *));
+	for(int i=1;i<=p->nbvar;++i){
+		nomvar[i - 1] = (char *) malloc (3 * sizeof(char));
+		sprintf(nomvar[i-1],"x%d",i-1);
+		glp_set_col_name(prob, i , nomvar[i-1]);
+
+		glp_set_col_bnds(prob, i, GLP_LO,0.0, 0.0);
+		glp_set_col_kind(prob, i, GLP_IV);
+
+	for(int i = 1;i <= p->nbvar;++i){
+	    glp_set_obj_coef(prob,i,p->coeff[i - 1]);
+	}
+	
+	nbcreux = 0;
+	for(i = 0;i < p->nbcontr;++i){
+		nbcreux += p->sizeContr[i];
+	}
+	
+	ia = (int *) malloc ((1 + nbcreux) * sizeof(int));
+	ja = (int *) malloc ((1 + nbcreux) * sizeof(int));
+	ar = (double *) malloc ((1 + nbcreux) * sizeof(double));
+	
+    // à changer
+	pos = 1;
+	for(int i = 0;i < p->nbcontr;++i){
+		for(int j = 0;j < p->sizeContr[i];++j){
+			ia[j+1] = i + 1;
+			ja[j+1] = p->contr[i][j];
+			ar[j+1] = tableauMotif[j][i].nb;
+			pos++;
+		}
+	}
+	
+	glp_load_matrix(prob,nbcreux,ia,ja,ar); 
+	glp_write_lp(prob,NULL,"projet_ro.lp");
+
+    // Résolution
+	glp_simplex(prob,NULL);	glp_intopt(prob,NULL);
+	z = glp_mip_obj_val(prob);
+	x = (double *) malloc (p->nbvar * sizeof(double));
+	for(int i = 0;i < p->nbvar; ++i) x[i] = glp_mip_col_val(prob,i+1); // Récupération de la valeur des variables, Appel différent dans le cas d'un problème en variables continues : for(i = 0;i < p->nbvar;++i) x[i] = glp_get_col_prim(prob,i+1);
+
+	printf("z = %d\n",z);
+	for(int i = 0;i < p->nbvar;++i) printf("x%d = %d, ",i,(int)(x[i] + 0.5)); // un cast est ajouté, x[i] pourrait être égal à 0.99999...
+	puts("");
+
+	glp_delete_prob(prob); 
+	free(p->coeff);
+	free(p->sizeContr);
+	free(p->droite);
+	for(int i = 0;i < p->nbcontr;++i) free(p->contr[i]);
+	free(p->contr);
+	free(ia);
+	free(ja);
+	free(ar);
+	free(x);
+}*/
+
+int bestFit(donnees *d){
+    int best=1;
+    motifs *bins = malloc(sizeof(motifs));
+    bins[0] = creerMotif(d);
+    for(int i=0; i<d->nb; ++i){
+        for(int j=0; j<d->tab[i].nb; ++j){
+            for(int k=0; k<best; ++k){
+                if(bins[k].taille + d->tab[i].t <= d->T){
+                    bins[k].tab[i].nb++;
+                    bins[k].taille += d->tab[i].t;
+                    break;
+                }
+            }
+            best++;
+            bins = realloc(bins, best * sizeof(motifs));
+            bins[best] = creerMotif(d);
+        }
+    }
+    return best;
+}
+
 int main(int argc, char **argv)
 {
-    pile *p=creerPile();
-    donnees d; 
+    pile *pMotifs=creerPile();
+    lMotifs = creerListeMotifs();
+    donnees d;
+    probleme pr;
 	
-	/* autres déclarations 
-		.
-		.
-		.
-	 */ 
-	
-	
-	/* Chargement des données à partir d'un fichier */
+	crono_start();
 	
 	lecture_data(argv[1],&d);
+	afficherDonnees(&d);
 	
-	enumeration_Motifs(&d,p,0);
-    afficherListeMotifs(&lMotifs,d.nb);
+	triFusion(d.tab,d.nb);
+	
+	enumerationMotifs(&d,pMotifs,0);
+    afficherListeMotifs(lMotifs,d.nb);
+    
+    chargerProbleme(&d, &pr);
+    //resoudreProbleme(&pr);
+    
+    int bf = bestFit(&d);
+    printf("Solution du best-fit : %d\n",bf);
+    
+    crono_stop();
+	double temps = crono_ms()/1000.0;
+
+	printf("Temps : %f\n",temps);	
+
     return 0;
 }
