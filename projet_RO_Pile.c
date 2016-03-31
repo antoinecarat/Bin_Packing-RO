@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-//#include <glpk.h>
+#include <glpk.h>
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -112,9 +112,50 @@ void lecture_data(char *file, donnees *p)
 	fclose(fin); // Fermeture du fichier
 }
 
+void fusion(objets *tab, int d1, int f1, int d2, int f2){
+	objets *tmp;
+	int cmp1=d1;
+	int cmp2=d2;
+
+	tmp=malloc((f1-d1+1)*sizeof(objets));
+
+	for(int i=d1;i<=f1;++i){
+	    tmp[i-d1].t=tab[i].t;
+	    tmp[i-d1].nb=tab[i].nb;
+	}    
+	for(int i=d1;i<=f2;++i){
+	    if (cmp1==d2){
+	        break;
+	    }
+	    else if ((cmp2==(f2+1)) || (tmp[cmp1-d1].t<tab[cmp2].t)){
+	        tab[i].t=tmp[cmp1-d1].t;
+	        tab[i].nb=tmp[cmp1-d1].nb;
+	        cmp1++;
+	    }
+	    else{
+	        tab[i].t=tab[cmp2].t;
+	        tab[i].nb=tab[cmp2].nb;
+	        cmp2++;
+	    }
+	}
+	free(tmp);
+}
+
+void triFusion_rec(objets *tab, int d, int f){
+	int pivot = ((f+d)/2);
+	if (d != f) {
+		triFusion_rec(tab,d,pivot);
+		triFusion_rec(tab,pivot+1,f);
+		fusion(tab,d,pivot,pivot+1,f);
+	}
+}
 
 void triFusion(objets *tab, int nb){
-       
+	int pivot = (nb/2) - 1;
+
+	triFusion_rec(tab, 0, pivot);
+	triFusion_rec(tab, pivot+1, nb-1);
+	fusion(tab, 0, pivot, pivot+1, nb-1);
 }
 
 
@@ -256,7 +297,7 @@ void chargerProbleme(donnees *d, probleme *p){
 	}
 }
 
-/*void resoudreProbleme(probleme *p){
+void resoudreGLPK(probleme *p){
 	glp_prob *prob;
 	int *ia;
 	int *ja;
@@ -270,12 +311,11 @@ void chargerProbleme(donnees *d, probleme *p){
 	double *x; 
 	
 	int nbcreux;
-	int pos;
 	
 	//Transfert de ces données dans les structures utilisées par la bibliothèque GLPK
 
 	prob = glp_create_prob(); // allocation mémoire pour le problème  
-	glp_set_prob_name(prob, "Simple Bin-Packing"); //affectation d'un nom (on pourrait mettre NULL) 
+	glp_set_prob_name(prob, "Bin-Packing"); //affectation d'un nom (on pourrait mettre NULL) 
 	glp_set_obj_dir(prob, GLP_MIN); // Il s'agit d'un problème de minimisation, on utiliserait la constante GLP_MAX dans le cas contraire
 	
 	// Déclaration du nombre de contraintes (nombre de lignes de la matrice des contraintes) : p->nbcontr
@@ -286,7 +326,7 @@ void chargerProbleme(donnees *d, probleme *p){
 	for(int i=1;i<=p->nbcontr;++i){
 		nomcontr[i - 1] = (char *) malloc (8 * sizeof(char)); 
 		numero[i - 1] = (char *) malloc (3  * sizeof(char));
-		strcpy(nomcontr[i-1], "piece");
+		strcpy(nomcontr[i-1], "Contrainte piece");
 		sprintf(numero[i-1], "%d", i);
 		strcat(nomcontr[i-1], numero[i-1]); 	
 		glp_set_row_name(prob, i, nomcontr[i-1]);
@@ -298,18 +338,19 @@ void chargerProbleme(donnees *d, probleme *p){
 	nomvar = (char **) malloc (p->nbvar * sizeof(char *));
 	for(int i=1;i<=p->nbvar;++i){
 		nomvar[i - 1] = (char *) malloc (3 * sizeof(char));
-		sprintf(nomvar[i-1],"x%d",i-1);
+		sprintf(nomvar[i-1],"m%d",i-1);
 		glp_set_col_name(prob, i , nomvar[i-1]);
 
 		glp_set_col_bnds(prob, i, GLP_LO,0.0, 0.0);
 		glp_set_col_kind(prob, i, GLP_IV);
+	}
 
 	for(int i = 1;i <= p->nbvar;++i){
 	    glp_set_obj_coef(prob,i,p->coeff[i - 1]);
 	}
 	
 	nbcreux = 0;
-	for(i = 0;i < p->nbcontr;++i){
+	for(int i = 0;i < p->nbcontr;++i){
 		nbcreux += p->sizeContr[i];
 	}
 	
@@ -317,19 +358,23 @@ void chargerProbleme(donnees *d, probleme *p){
 	ja = (int *) malloc ((1 + nbcreux) * sizeof(int));
 	ar = (double *) malloc ((1 + nbcreux) * sizeof(double));
 	
-    // à changer
-	pos = 1;
+	motifs *m;
+	int pos=1;
 	for(int i = 0;i < p->nbcontr;++i){
+		m = lMotifs->tete;
 		for(int j = 0;j < p->sizeContr[i];++j){
-			ia[j+1] = i + 1;
-			ja[j+1] = p->contr[i][j];
-			ar[j+1] = tableauMotif[j][i].nb;
+			ia[pos] = i + 1;
+			ja[pos] = p->contr[i][j];
+			ar[pos] = m->tab[i].nb;
 			pos++;
+			if (j+1<p->sizeContr[i]){
+				m = m->suiv;
+			}
 		}
 	}
 	
 	glp_load_matrix(prob,nbcreux,ia,ja,ar); 
-	glp_write_lp(prob,NULL,"projet_ro.lp");
+	glp_write_lp(prob,NULL,"projet_CARAT.lp");
 
     // Résolution
 	glp_simplex(prob,NULL);	glp_intopt(prob,NULL);
@@ -337,7 +382,7 @@ void chargerProbleme(donnees *d, probleme *p){
 	x = (double *) malloc (p->nbvar * sizeof(double));
 	for(int i = 0;i < p->nbvar; ++i) x[i] = glp_mip_col_val(prob,i+1); // Récupération de la valeur des variables, Appel différent dans le cas d'un problème en variables continues : for(i = 0;i < p->nbvar;++i) x[i] = glp_get_col_prim(prob,i+1);
 
-	printf("z = %d\n",z);
+	printf("\nz = %d\n\n",z);
 	for(int i = 0;i < p->nbvar;++i) printf("x%d = %d, ",i,(int)(x[i] + 0.5)); // un cast est ajouté, x[i] pourrait être égal à 0.99999...
 	puts("");
 
@@ -351,7 +396,7 @@ void chargerProbleme(donnees *d, probleme *p){
 	free(ja);
 	free(ar);
 	free(x);
-}*/
+}
 
 int bestFit(donnees *d){
     int best=1;
@@ -374,8 +419,11 @@ int bestFit(donnees *d){
     return best;
 }
 
-int main(int argc, char **argv)
-{
+int resoudreALGO(int *solution){
+	return 0;
+}
+
+int main(int argc, char **argv){
     pile *pMotifs=creerPile();
     lMotifs = creerListeMotifs();
     donnees d;
@@ -384,23 +432,39 @@ int main(int argc, char **argv)
 	crono_start();
 	
 	lecture_data(argv[1],&d);
-	afficherDonnees(&d);
 	
 	triFusion(d.tab,d.nb);
+	afficherDonnees(&d);
 	
 	enumerationMotifs(&d,pMotifs,0);
     afficherListeMotifs(lMotifs,d.nb);
     
     chargerProbleme(&d, &pr);
-    //resoudreProbleme(&pr);
+    printf("======================================\n\tRESOLUTION AVEC GLPK :\n======================================\n\n\n");
+    resoudreGLPK(&pr);
     
-    int bf = bestFit(&d);
-    printf("Solution du best-fit : %d\n",bf);
+    //int bf = bestFit(&d);
+    //printf("Solution du best-fit : %d\n",bf);
     
+    int *solution = malloc(lMotifs->nbMotifs * sizeof(int));
+    for (int i=0; i<lMotifs->nbMotifs;++i){
+    	solution[i]=0;
+    }
+    int z = resoudreALGO(solution);
+
+    printf("\n\n\n======================================\n\tRESOLUTION PAR ALGORITHME :\n======================================\n\n");
+    printf("z = %d\n\n", z);
+    for (int i=0; i<lMotifs->nbMotifs;++i){
+    	printf("x%d = %d ,",i, solution[i]);
+    }
+
     crono_stop();
 	double temps = crono_ms()/1000.0;
 
-	printf("Temps : %f\n",temps);	
+	printf("\n\nTemps : %f\n",temps);
+
+	free(pMotifs);
+	free(lMotifs);
 
     return 0;
 }
