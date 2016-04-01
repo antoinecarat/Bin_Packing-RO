@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-//#include <glpk.h>
+#include <glpk.h>
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -297,7 +297,7 @@ void chargerProbleme(donnees *d, probleme *p){
 	}
 }
 
-/*void resoudreGLPK(probleme *p){
+void resoudreGLPK(probleme *p){
 	glp_prob *prob;
 	int *ia;
 	int *ja;
@@ -396,7 +396,7 @@ void chargerProbleme(donnees *d, probleme *p){
 	free(ja);
 	free(ar);
 	free(x);
-}*/
+}
 
 int bestFit(donnees *d){
     int best=1;
@@ -435,11 +435,11 @@ int bestFit(donnees *d){
 }
 
 int entierSup(double x){
-	if(x - ((int)x)>0){
-		return ((int)x)+1;
-	} else {
-		return (int)x;
-	}
+	if (x - ((int)x) > 0){
+        return (((int)x) + 1);
+    } else {
+        return (int)x;
+    }
 }
 
 int tailleTotale(donnees *d){
@@ -451,13 +451,95 @@ int tailleTotale(donnees *d){
 	return s;
 }
 
-int resoudreALGO(donnees *d, int b, int *solution){
-	if (entierSup(tailleTotale(d)/(double)d->T) == b){
-		return b;
-	} else {
-		//Algo recursif ici
-		return 0;
+int tailleActuelleMotif(int m, donnees *d, pile *p){
+	motifs *mo = lMotifs->tete;
+	motifs *mo2 = lMotifs->tete;
+
+	int taille=0;
+
+	for(int i=0; i<m; ++i){
+		mo=mo->suiv;
 	}
+
+	//Pour chaque piece
+	for(int j=0; j<d->nb ; ++j){
+		int nbIn = mo->tab[j].nb;
+		int nbTot = d->tab[j].nb;
+		int nbUse = 0;
+		//Si elle est utilisée dans mo
+		if (nbIn != 0){
+			if (p->taille == 0){
+				taille += (d->tab[j].t * nbIn);
+			} else {
+				maillon*ptr = p->sommet;
+		        	//Pour chaque motif de la pile, on augmente nbUse
+		        	for (int l=0; l<p->taille; ++l){
+		        		mo2 = lMotifs->tete;
+		        		for (int k=0; k<ptr->elt; ++k){
+		        			mo2 = mo2->suiv;
+		        		}
+		        		nbUse += mo2->tab[j].nb;
+		        		ptr = ptr->suiv;
+		        	}
+		        	//On calcule la taille en fonction de si on a assez de piece
+		        	if ((nbTot - nbUse) >= nbIn){ //Si on en a assez
+		        		taille += (d->tab[j].t * nbIn);
+		        	} else {
+		        		taille += (d->tab[j].t *(nbTot - nbUse));
+		        	}
+		    }
+		}
+    }
+    //printf("TAILLE %d\n", taille);
+    return taille;
+}
+
+int convertirSolution(int *sol, pile *p){
+	int t = p->taille;
+	maillon *ptr = p->sommet;
+
+	for(int i=0; i<p->taille; ++i){
+		sol[ptr->elt]++;
+		ptr = ptr->suiv;
+	}
+
+	return t;
+}
+
+int resoudreALGO(donnees *d, int b, int *solution, pile *p, int m, int tailleR, int niveau){
+	static int iterations = 0;
+	int tailleSuivant;
+	motifs *mo = lMotifs->tete;
+
+	if (tailleR > 0){
+		if (entierSup(tailleR/(double)d->T) != b){
+			printf("ON PEUT TROUVER MIEUX QUE %d!\n",b);
+			for(int i=0; i<m; ++i){
+				mo=mo->suiv;
+			}
+			for(int i=m; i<lMotifs->nbMotifs; ++i){
+				iterations++;
+				printf("PEUT ON METTRE M%d : %d?\n",i, tailleActuelleMotif(i,d,p));
+				tailleSuivant = tailleR - tailleActuelleMotif(i,d,p);
+				printf("taillesuivant : %d\n", tailleSuivant);
+				printf("entierSup : %d\n",(entierSup(tailleSuivant/d->T)));
+				printf("niveau : %d\n", niveau);
+				if ((entierSup(tailleSuivant/d->T)) + niveau < b){
+					printf("OUI\n");
+					empiler(p, i);
+					resoudreALGO(d, b, solution, p, i, tailleSuivant, niveau+1);
+				}
+				mo = mo->suiv;
+			}
+			if(tailleR == 0){
+				b = convertirSolution(solution, p);
+				printf("VOILA, %d C'EST MIEUX !",b);
+			}
+			depiler(p);
+		}
+	}
+	//printf("%d \n",iterations);
+	return b;
 }
 
 int main(int argc, char **argv){
@@ -478,10 +560,10 @@ int main(int argc, char **argv){
     
     chargerProbleme(&d, &pr);
     printf("======================================\n\tRESOLUTION AVEC GLPK :\n======================================\n\n\n");
-    //resoudreGLPK(&pr);
+    resoudreGLPK(&pr);
     
     
-    printf("===========================\n\tBEST-FIT :\n===========================\n\n\n");
+    printf("\n\n===========================\n\tBEST-FIT :\n===========================\n\n\n");
     
     int bf = bestFit(&d);
     printf("bf = %d\n",bf);
@@ -490,9 +572,12 @@ int main(int argc, char **argv){
     for (int i=0; i<lMotifs->nbMotifs;++i){
     	solution[i]=0;
     }
-    int z = resoudreALGO(&d, bf, solution);
 
     printf("\n\n\n======================================\n\tRESOLUTION PAR ALGORITHME :\n======================================\n\n");
+    
+    pile *pBins=creerPile();
+    int z = resoudreALGO(&d, bf, solution, pBins, 0, tailleTotale(&d), 1);
+
     printf("z = %d\n\n", z);
     for (int i=0; i<lMotifs->nbMotifs;++i){
     	printf("x%d = %d ,",i, solution[i]);
