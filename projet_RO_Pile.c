@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <glpk.h>
+//#include <glpk.h>
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -127,7 +127,7 @@ void fusion(objets *tab, int d1, int f1, int d2, int f2){
 	    if (cmp1==d2){
 	        break;
 	    }
-	    else if ((cmp2==(f2+1)) || (tmp[cmp1-d1].t<tab[cmp2].t)){
+	    else if ((cmp2==(f2+1)) || (tmp[cmp1-d1].t>tab[cmp2].t)){
 	        tab[i].t=tmp[cmp1-d1].t;
 	        tab[i].nb=tmp[cmp1-d1].nb;
 	        cmp1++;
@@ -297,7 +297,7 @@ void chargerProbleme(donnees *d, probleme *p){
 	}
 }
 
-void resoudreGLPK(probleme *p){
+/*void resoudreGLPK(probleme *p){
 	glp_prob *prob;
 	int *ia;
 	int *ja;
@@ -396,31 +396,68 @@ void resoudreGLPK(probleme *p){
 	free(ja);
 	free(ar);
 	free(x);
-}
+}*/
 
 int bestFit(donnees *d){
     int best=1;
+    int a;
     motifs *bins = malloc(sizeof(motifs));
     bins[0] = creerMotif(d);
+    
     for(int i=0; i<d->nb; ++i){
-        for(int j=0; j<d->tab[i].nb; ++j){
-            for(int k=0; k<best; ++k){
+    	for(int j=0; j<d->tab[i].nb; ++j){
+    		a = 0;
+            for(int k=0; (k<best && a==0) ; ++k){
                 if(bins[k].taille + d->tab[i].t <= d->T){
                     bins[k].tab[i].nb++;
                     bins[k].taille += d->tab[i].t;
-                    break;
+                    a=1;
                 }
             }
-            best++;
-            bins = realloc(bins, best * sizeof(motifs));
-            bins[best] = creerMotif(d);
+            if(a==0){
+            	bins = realloc(bins, (best+1)*sizeof(motifs));
+            	bins[best] = creerMotif(d);
+            	bins[best].tab[i].nb++;
+                bins[best].taille += d->tab[i].t;
+            	best++;
+            }
         }
     }
+    for (int i=0; i<best; ++i){
+    	printf("[ ");
+    	for (int j=0; j<d->nb; ++j){
+    		printf("%d ,",bins[i].tab[j].nb);
+    	}
+    	printf(" ] ,");
+    }
+    printf("\n\n");
     return best;
 }
 
-int resoudreALGO(int *solution){
-	return 0;
+int entierSup(double x){
+	if(x - ((int)x)>0){
+		return ((int)x)+1;
+	} else {
+		return (int)x;
+	}
+}
+
+int tailleTotale(donnees *d){
+	int s=0;
+	for (int i=0; i<d->nb; ++i){
+		s += d->tab[i].t * d->tab[i].nb;
+	}
+	
+	return s;
+}
+
+int resoudreALGO(donnees *d, int b, int *solution){
+	if (entierSup(tailleTotale(d)/(double)d->T) == b){
+		return b;
+	} else {
+		//Algo recursif ici
+		return 0;
+	}
 }
 
 int main(int argc, char **argv){
@@ -441,16 +478,19 @@ int main(int argc, char **argv){
     
     chargerProbleme(&d, &pr);
     printf("======================================\n\tRESOLUTION AVEC GLPK :\n======================================\n\n\n");
-    resoudreGLPK(&pr);
+    //resoudreGLPK(&pr);
     
-    //int bf = bestFit(&d);
-    //printf("Solution du best-fit : %d\n",bf);
+    
+    printf("===========================\n\tBEST-FIT :\n===========================\n\n\n");
+    
+    int bf = bestFit(&d);
+    printf("bf = %d\n",bf);
     
     int *solution = malloc(lMotifs->nbMotifs * sizeof(int));
     for (int i=0; i<lMotifs->nbMotifs;++i){
     	solution[i]=0;
     }
-    int z = resoudreALGO(solution);
+    int z = resoudreALGO(&d, bf, solution);
 
     printf("\n\n\n======================================\n\tRESOLUTION PAR ALGORITHME :\n======================================\n\n");
     printf("z = %d\n\n", z);
