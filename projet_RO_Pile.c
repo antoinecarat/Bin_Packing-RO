@@ -492,7 +492,7 @@ int main(int argc, char **argv){
     }
     int z = resoudreALGO(&d, bf, solution);
 
-    printf("\n\n\n======================================\n\tRESOLUTION PAR ALGORITHME :\n======================================\n\n");
+    printf("\n\n======================================\n\tRESOLUTION PAR ALGORITHME :\n======================================\n\n");
     printf("z = %d\n\n", z);
     for (int i=0; i<lMotifs->nbMotifs;++i){
     	printf("x%d = %d ,",i, solution[i]);
