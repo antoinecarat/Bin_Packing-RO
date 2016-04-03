@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-//#include <glpk.h>
+#include <glpk.h>
 #include <time.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -24,8 +24,8 @@ typedef struct {
 	int nbvar; 
 	int nbcontr; 
 	int *coeff;  
-	int **contr; 
-	int *sizeContr; 
+	int **contr;
+	int *sizeContr;
 	int *droite;
 } probleme;
 
@@ -38,7 +38,6 @@ struct motifs {
     int taille;
 };
 
-//Liste chainee pour stoker les motifs
 typedef struct{
     motifs* tete;
     motifs* queue;
@@ -47,9 +46,6 @@ typedef struct{
 
 listeMotifs *lMotifs;
 
-/**
- * Prodecure crono_start : Demarre le chrono
-*/
 void crono_start()
 {
 	struct rusage rusage;
@@ -58,9 +54,6 @@ void crono_start()
 	start_utime = rusage.ru_utime;
 }
 
-/**
- * Prodecure crono_stop : Arrete le chrono
-*/
 void crono_stop()
 {
 	struct rusage rusage;
@@ -69,9 +62,6 @@ void crono_stop()
 	stop_utime = rusage.ru_utime;
 }
 
-/**
- * Prodecure crono_ms
-*/
 double crono_ms()
 {
 	return (stop_utime.tv_sec - start_utime.tv_sec) * 1000 +
@@ -112,6 +102,15 @@ void lecture_data(char *file, donnees *p)
 	fclose(fin); // Fermeture du fichier
 }
 
+
+/**
+ * Procedure : fusion et tri de deux partie d'un tableau.
+ * @param tab : tableau d'entiers
+ * @param d1 : indice du début du premier tableau
+ * @param f1 : indice de fin du premier tableau
+ * @param d2 : indice du début du deuxieme tableau
+ * @param f2 : indice de fin du deuxieme tableau
+ */
 void fusion(objets *tab, int d1, int f1, int d2, int f2){
 	objets *tmp;
 	int cmp1=d1;
@@ -141,6 +140,12 @@ void fusion(objets *tab, int d1, int f1, int d2, int f2){
 	free(tmp);
 }
 
+/**
+ * Procedure : tri d'une partie d'un tableau.
+ * @param tab : tableau d'entiers
+ * @param d : indice du début du tableau
+ * @param f : indice de fin du tableau
+ */
 void triFusion_rec(objets *tab, int d, int f){
 	int pivot = ((f+d)/2);
 	if (d != f) {
@@ -150,6 +155,11 @@ void triFusion_rec(objets *tab, int d, int f){
 	}
 }
 
+/**
+ * Procedure : tri d'un tableau.
+ * @param tab : tableau d'entiers
+ * @param nb : nombre d'éléments du tableau
+ */
 void triFusion(objets *tab, int nb){
 	int pivot = (nb/2) - 1;
 
@@ -158,7 +168,10 @@ void triFusion(objets *tab, int nb){
 	fusion(tab, 0, pivot, pivot+1, nb-1);
 }
 
-
+/**
+ * Fonction : initialisation d'une liste de motifs vide.
+ * @return listeMotifs
+ */
 listeMotifs* creerListeMotifs(){
     listeMotifs *l = malloc(sizeof(listeMotifs));
     l->tete=NULL;
@@ -168,6 +181,12 @@ listeMotifs* creerListeMotifs(){
     return l;
 }
 
+/**
+ * Fonction : creation d'un motif à partir d'une pile.
+ * @param p : pile d'entier correspondant au objets à mettre dans le motif 
+ * @param d : donnees
+ * @return motifs
+ */
 motifs* convertirMotif(pile *p, donnees *d){
     motifs *m = malloc(sizeof(motifs));
     m->prec = NULL;
@@ -197,6 +216,11 @@ motifs* convertirMotif(pile *p, donnees *d){
     return m;
 }
 
+/**
+ * Fonction : creation d'un motif en fonction des donnees (tous les tab[i].nb à 0).
+ * @param d : donnees
+ * @return motifs
+ */
 motifs creerMotif(donnees *d){
     motifs m;
     m.prec = NULL;
@@ -212,6 +236,12 @@ motifs creerMotif(donnees *d){
     return m;
 }
 
+
+/**
+ * Procedure : ajout d'un motif à une liste de motifs.
+ * @param m : motif à ajouter 
+ * @param l : liste dans laquelle ajouter
+ */
 void ajouterMotif(motifs *m, listeMotifs *l){
     if(l->nbMotifs>0){
         l->queue->suiv = m;
@@ -259,6 +289,12 @@ void afficherListeMotifs(listeMotifs *l, int nb){
     }
 }
 
+/**
+ * Procedure : Enumeration des motifs en fonction des donnees d et de la pile p.
+ * @param d : donnees
+ * @param p : pile
+ * @param start : piece courante
+ */
 void enumerationMotifs(donnees *d, pile *pile, int start){
     for (int i=start; i<d->nb; ++i){
         if (d->T >= pile->poids + d->tab[i].t){
@@ -273,6 +309,11 @@ void enumerationMotifs(donnees *d, pile *pile, int start){
     depiler(pile);
 }
 
+/**
+ * Procedure : creer un probleme à partir des donnees.
+ * @param d : donnees
+ * @param p : probleme
+ */
 void chargerProbleme(donnees *d, probleme *p){
 	p->nbvar = lMotifs->nbMotifs;
 	p->nbcontr = d->nb;
@@ -297,7 +338,11 @@ void chargerProbleme(donnees *d, probleme *p){
 	}
 }
 
-/*void resoudreGLPK(probleme *p){
+/**
+ * Procedure : Resoltion du probleme avec le solveur GLPK.
+ * @param p : probleme
+ */
+void resoudreGLPK(probleme *p){
 	glp_prob *prob;
 	int *ia;
 	int *ja;
@@ -364,7 +409,7 @@ void chargerProbleme(donnees *d, probleme *p){
 		m = lMotifs->tete;
 		for(int j = 0;j < p->sizeContr[i];++j){
 			ia[pos] = i + 1;
-			ja[pos] = p->contr[i][j];
+			ja[pos] = j + 1;
 			ar[pos] = m->tab[i].nb;
 			pos++;
 			if (j+1<p->sizeContr[i]){
@@ -396,8 +441,13 @@ void chargerProbleme(donnees *d, probleme *p){
 	free(ja);
 	free(ar);
 	free(x);
-}*/
+}
 
+/**
+ * Fonction : Calcul du nombre de bin completés par l'algorithme du best fit.
+ * @param d : donnees
+ * @return nombre de bins utilisés
+ */
 int bestFit(donnees *d){
     int best=1;
     int a;
@@ -434,6 +484,11 @@ int bestFit(donnees *d){
     return best;
 }
 
+/**
+ * Fonction : Renvoie l'arrondi supérieur d'un réel.
+ * @param x : réel
+ * @return entier supérieur
+ */
 int entierSup(double x){
 	if (x - ((int)x) > 0){
         return (((int)x) + 1);
@@ -442,6 +497,11 @@ int entierSup(double x){
     }
 }
 
+/**
+ * Fonction : Renvoie la taille totale des objets à ranger.
+ * @param d : donnees
+ * @return tailleTotale
+*/
 int tailleTotale(donnees *d){
 	int s=0;
 	for (int i=0; i<d->nb; ++i){
@@ -451,6 +511,13 @@ int tailleTotale(donnees *d){
 	return s;
 }
 
+/**
+ * Fonction : Renvoie la taille d'un motif en prenant en compte les différents objets déjà utilisés dans la pile.
+ * @param m : indice du motif
+ * @param d : donnees
+ * @param p : pile
+ * @return taille du motif
+ */
 int tailleActuelleMotif(int m, donnees *d, pile *p){
 	motifs *mo = lMotifs->tete;
 	motifs *mo2 = lMotifs->tete;
@@ -461,18 +528,16 @@ int tailleActuelleMotif(int m, donnees *d, pile *p){
 		mo=mo->suiv;
 	}
 
-	//Pour chaque piece
 	for(int j=0; j<d->nb ; ++j){
 		int nbIn = mo->tab[j].nb;
 		int nbTot = d->tab[j].nb;
 		int nbUse = 0;
-		//Si elle est utilisée dans mo
+
 		if (nbIn != 0){
 			if (p->taille == 0){
 				taille += (d->tab[j].t * nbIn);
 			} else {
 				maillon*ptr = p->sommet;
-		        	//Pour chaque motif de la pile, on augmente nbUse
 		        	for (int l=0; l<p->taille; ++l){
 		        		mo2 = lMotifs->tete;
 		        		for (int k=0; k<ptr->elt; ++k){
@@ -481,7 +546,6 @@ int tailleActuelleMotif(int m, donnees *d, pile *p){
 		        		nbUse += mo2->tab[j].nb;
 		        		ptr = ptr->suiv;
 		        	}
-		        	//On calcule la taille en fonction de si on a assez de piece
 		        	if ((nbTot - nbUse) >= nbIn){ //Si on en a assez
 		        		taille += (d->tab[j].t * nbIn);
 		        	} else {
@@ -490,14 +554,22 @@ int tailleActuelleMotif(int m, donnees *d, pile *p){
 		    }
 		}
     }
-    //printf("TAILLE %d\n", taille);
     return taille;
 }
 
+/**
+ * Fonction : Converti une pile en un tableau d'entier correspondant à quels motifs sont utilisés
+ * @param sol : tableau d'entier
+ * @param p : pile
+ * @return nombre de bin de la solution
+ */
 int convertirSolution(int *sol, pile *p){
 	int t = p->taille;
 	maillon *ptr = p->sommet;
-
+	
+	for(int i=0; i<lMotifs->nbMotifs; ++i){
+		sol[i]=0;
+	}
 	for(int i=0; i<p->taille; ++i){
 		sol[ptr->elt]++;
 		ptr = ptr->suiv;
@@ -506,40 +578,78 @@ int convertirSolution(int *sol, pile *p){
 	return t;
 }
 
-int resoudreALGO(donnees *d, int b, int *solution, pile *p, int m, int tailleR, int niveau){
-	static int iterations = 0;
+/**
+ * Fonction : Renvoie 1 si la branche est obsolete, 0 sinon
+ * @param d : donnees
+ * @param p : pile
+ * @param m : indice du motif auquel on commence
+ * @return 1 ou 0
+ */
+int brancheObsolete(donnees *d, pile *p, int m){
+	int obsolete = 0;
+	motifs *mo = lMotifs->tete;
+	int *tabReste = malloc(d->nb * sizeof(int));
+
+	for (int i = 0; (i < d->nb && obsolete==0); ++i) {
+		tabReste[i] = d->tab[i].nb;
+		int nbUse = 0;
+		if (p->taille != 0){
+			maillon *ptr = p->sommet;
+		   	for (int l=0; l<p->taille; ++l){
+		  		mo = lMotifs->tete;
+		   		for (int k=0; k<ptr->elt; ++k){
+		   			mo = mo->suiv;
+		   		}
+		   		nbUse += mo->tab[i].nb;
+		   		ptr = ptr->suiv;
+			}
+			if (d->tab[i].nb - nbUse <= 0){
+				obsolete = 1;
+			}
+		}
+	}
+	return obsolete;
+}
+
+
+/**
+ * Fonction : Renvoie le nombre de bin de la solution optimale
+ * @param d : donnees
+ * @param b : meilleur resultat jusqua present
+ * @param solution : motifs utilisés
+ * @param p : pile
+ * @param m : motif courant
+ * @param tailleR : taille totale des objets restants
+ * @param niveau : nombre de bin déjà utilisés
+ * @return nombre de bin
+ */
+int resoudreALGO(donnees *d, int *b, int *solution, pile *p, int m, int tailleR, int niveau){
 	int tailleSuivant;
 	motifs *mo = lMotifs->tete;
-
-	if (tailleR > 0){
-		if (entierSup(tailleR/(double)d->T) != b){
-			printf("ON PEUT TROUVER MIEUX QUE %d!\n",b);
-			for(int i=0; i<m; ++i){
-				mo=mo->suiv;
-			}
-			for(int i=m; i<lMotifs->nbMotifs; ++i){
-				iterations++;
-				printf("PEUT ON METTRE M%d : %d?\n",i, tailleActuelleMotif(i,d,p));
+	int borneMini = entierSup(tailleR/(double)d->T);
+	for(int i=0; i<m; ++i){
+		mo=mo->suiv;
+	}
+			
+	if ( borneMini + niveau < *b){
+		for(int i=m; i<lMotifs->nbMotifs; ++i){
+			if (tailleActuelleMotif(i,d,p) > 0 && brancheObsolete(d,p,i)==0){
 				tailleSuivant = tailleR - tailleActuelleMotif(i,d,p);
-				printf("taillesuivant : %d\n", tailleSuivant);
-				printf("entierSup : %d\n",(entierSup(tailleSuivant/d->T)));
-				printf("niveau : %d\n", niveau);
-				if ((entierSup(tailleSuivant/d->T)) + niveau < b){
-					printf("OUI\n");
+				int borneSuivant = entierSup(tailleSuivant/(double)d->T);
+				if (borneSuivant + niveau + 1 < *b){
 					empiler(p, i);
 					resoudreALGO(d, b, solution, p, i, tailleSuivant, niveau+1);
 				}
 				mo = mo->suiv;
 			}
-			if(tailleR == 0){
-				b = convertirSolution(solution, p);
-				printf("VOILA, %d C'EST MIEUX !",b);
-			}
-			depiler(p);
 		}
 	}
-	//printf("%d \n",iterations);
-	return b;
+	if (tailleR <= 0) {
+		*b = convertirSolution(solution, p);
+	}
+	depiler(p);
+	
+	return *b;
 }
 
 int main(int argc, char **argv){
@@ -560,7 +670,7 @@ int main(int argc, char **argv){
     
     chargerProbleme(&d, &pr);
     printf("======================================\n\tRESOLUTION AVEC GLPK :\n======================================\n\n\n");
-    //resoudreGLPK(&pr);
+    resoudreGLPK(&pr);
     
     
     printf("\n\n===========================\n\tBEST-FIT :\n===========================\n\n\n");
@@ -576,11 +686,18 @@ int main(int argc, char **argv){
     printf("\n\n\n======================================\n\tRESOLUTION PAR ALGORITHME :\n======================================\n\n");
     
     pile *pBins=creerPile();
-    int z = resoudreALGO(&d, bf, solution, pBins, 0, tailleTotale(&d), 1);
+    printf("TAILLE TOTALE : %d\n",tailleTotale(&d));
+    int *b = &bf;
+    int z = resoudreALGO(&d, b, solution, pBins, 0, tailleTotale(&d), 0);
 
     printf("z = %d\n\n", z);
-    for (int i=0; i<lMotifs->nbMotifs;++i){
-    	printf("x%d = %d ,",i, solution[i]);
+    if (z < bf) {
+	    for (int i=0; i<lMotifs->nbMotifs;++i){
+    		printf("x%d = %d ,",i, solution[i]);
+    	}
+    } else {
+    	printf("La solution du best-fit est optimale :\n");
+    	bestFit(&d);
     }
 
     crono_stop();

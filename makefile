@@ -4,12 +4,12 @@ FLAGS = -Wall -Werror -g
 
 all: main
 
-main: pile.o projet_RO_Pile.c
-	$(COMPIL) -std=$(VSTD) $(FLAGS) projet_RO_Pile.c -c
-	$(COMPIL) -std=$(VSTD) $(FLAGS) projet_RO_Pile.o pile.o -lglpk -lm -o main
+main: pile.o BinPacking_CARAT-VUYLSTEKE.c
+	$(COMPIL) -std=$(VSTD) $(FLAGS) BinPacking_CARAT-VUYLSTEKE.c -c
+	$(COMPIL) -std=$(VSTD) $(FLAGS) BinPacking_CARAT-VUYLSTEKE.o pile.o -lglpk -lm -o main
 
-main2: pile.o projet_RO_Pile.c
-	$(COMPIL) -std=$(VSTD) $(FLAGS) projet_RO_Pile.c pile.o -o main
+main2: pile.o BinPacking_CARAT-VUYLSTEKE.c
+	$(COMPIL) -std=$(VSTD) $(FLAGS) BinPacking_CARAT-VUYLSTEKE.c pile.o -o main
 
 pile.o: pile.c 
 	$(COMPIL) -std=$(VSTD) $(FLAGS) pile.c -c
